@@ -18,11 +18,8 @@
 
 #include "Logging.hh"
 #include "StringUtil.hh"
-#include "LogEncoder.hh"
+#include "LogRotator.hh"
 #include "LogDecoder.hh"
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -57,8 +54,7 @@ namespace litecore {
     static LogDomain::Callback_t sCallback = LogDomain::defaultCallback;
     static bool sCallbackPreformatted = false;
     LogLevel LogDomain::sFileMinLevel = LogLevel::None;
-    static ofstream *sFileOut = nullptr;
-    static LogEncoder* sLogEncoder = nullptr;
+    static LogRotator* sLogRotator = nullptr;
     static mutex sLogMutex;
 
 
@@ -79,18 +75,15 @@ namespace litecore {
                                        const string &initialMessage)
     {
         unique_lock<mutex> lock(sLogMutex);
-        delete sLogEncoder;
-        sLogEncoder = nullptr;
-        delete sFileOut;
-        sFileOut = nullptr;
+        delete sLogRotator;
+        sLogRotator = nullptr;
         if (filePath.empty()) {
             sFileMinLevel = LogLevel::None;
         } else {
             sFileMinLevel = atLevel;
-            sFileOut = new ofstream(filePath, ofstream::out|ofstream::trunc|ofstream::binary);
-            sLogEncoder = new LogEncoder(*sFileOut);
+            sLogRotator = new LogRotator(filePath);
             if (!initialMessage.empty())
-                sLogEncoder->log((int)LogLevel::Info, "", LogEncoder::None,
+                sLogRotator->log((int)LogLevel::Info, "", LogEncoder::None,
                                  "---- %s ----", initialMessage.c_str());
 
             // Make sure to flush the log when the process exits:
@@ -98,13 +91,11 @@ namespace litecore {
             call_once(f, []{
                 atexit([]{
                     unique_lock<mutex> lock(sLogMutex);
-                    if (sLogEncoder)
-                        sLogEncoder->log((int)LogLevel::Info, "", LogEncoder::None,
+                    if (sLogRotator)
+                        sLogRotator->log((int)LogLevel::Info, "", LogEncoder::None,
                                          "---- END ----");
-                    delete sLogEncoder;
-                    delete sFileOut;
-                    sLogEncoder = nullptr;
-                    sFileOut = nullptr;
+                    delete sLogRotator;
+                    sLogRotator = nullptr;
                 });
             });
         }
@@ -267,8 +258,8 @@ namespace litecore {
         }
 
         // Write to the encoded log file:
-        if (sLogEncoder && level >= sFileMinLevel) {
-            sLogEncoder->vlog((int8_t)level, _name, (LogEncoder::ObjectRef)objRef, fmt, args);
+        if (sLogRotator && level >= sFileMinLevel) {
+            sLogRotator->vlog((int8_t)level, _name, (LogEncoder::ObjectRef)objRef, fmt, args);
         }
     }
 
@@ -328,8 +319,8 @@ namespace litecore {
     {
         unique_lock<mutex> lock(sLogMutex);
         unsigned objRef;
-        if (sLogEncoder)
-            objRef = sLogEncoder->registerObject(description);
+        if (sLogRotator)
+            objRef = sLogRotator->registerObject(description);
         else
             objRef = ++_lastObjRef;
 

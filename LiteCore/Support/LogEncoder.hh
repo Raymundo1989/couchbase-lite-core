@@ -66,6 +66,7 @@ namespace litecore {
 
     private:
         friend class LogDecoder;
+        friend class LogRotator;
 
         int64_t _timeElapsed() const;
         void _writeUVarInt(uint64_t);

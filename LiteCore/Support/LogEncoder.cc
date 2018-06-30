@@ -23,6 +23,7 @@
 #include "varint.hh"
 #include <exception>
 #include <iostream>
+#include <fstream>
 #include <time.h>
 
 #if __APPLE__

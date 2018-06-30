@@ -19,10 +19,12 @@
 
 #include "LogEncoder.hh"
 #include "LogDecoder.hh"
+#include "LogRotator.hh"
 #include "LiteCoreTest.hh"
 #include "StringUtil.hh"
 #include <regex>
 #include <sstream>
+#include <unordered_set>
 
 
 #define DATESTAMP "\\w+, \\d{2}/\\d{2}/\\d{2}"
@@ -142,4 +144,60 @@ TEST_CASE("LogEncoder auto-flush", "[Log]") {
     CHECK(!encoded.empty());
     string result = dumpLog(encoded, {});
     CHECK(!result.empty());
+}
+
+TEST_CASE("LogRotator auto-rotate", "[Log]") {
+    auto temp = FilePath::tempDirectory()["Log_tests/"];
+    temp.mkdir();
+
+    auto logFilePath = temp.fileNamed("log.txt");
+
+    LogRotator rotator(logFilePath, 10, 2, 1 * RecurringEvent::kTicksPerSec);
+    auto objectRef = rotator.registerObject("Test");
+
+    rotator.log(0, nullptr, objectRef, "This is more than 10 bytes (part 1)");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    
+    rotator.log(0, nullptr, objectRef, "This is more than 10 bytes (part 2)");
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    
+    rotator.log(0, nullptr, objectRef, "This is more than 10 bytes (part 3)");
+    rotator.stop();
+    rotator.flush();
+
+    int count = 0;
+    unordered_set<string> expectedFiles { "log.txt", "log.txt.1" };
+    temp.forEachFile([&count, &expectedFiles] (FilePath f)
+    {
+        expectedFiles.erase(f.fileName());
+        count++;
+    });
+
+    CHECK(count == 2);
+    REQUIRE(expectedFiles.empty());
+
+    stringstream buffer;
+    ifstream fin(logFilePath, ios::binary, _SH_DENYNO);
+    LogDecoder decoder1(fin);
+    decoder1.decodeTo(buffer, {});
+
+    regex expected(TIMESTAMP "---- Logging begins on " DATESTAMP " ----\\n"
+                   TIMESTAMP "This is more than 10 bytes \\(part 3\\)\\n");
+
+    auto tmp = buffer.str();
+    CHECK(regex_match(buffer.str(), expected));
+
+    logFilePath = temp.fileNamed("log.txt.1");
+    fin = ifstream(logFilePath, ios::binary);
+    LogDecoder decoder2(fin);
+    buffer = stringstream();
+    decoder2.decodeTo(buffer, {});
+
+    expected = regex(TIMESTAMP "---- Logging begins on " DATESTAMP " ----\\n"
+                   TIMESTAMP "This is more than 10 bytes \\(part 2\\)\\n");
+    
+    tmp = buffer.str();
+    CHECK(regex_match(buffer.str(), expected));
 }
