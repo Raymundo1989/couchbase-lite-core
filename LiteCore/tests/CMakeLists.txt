@@ -23,7 +23,6 @@ LIST(REMOVE_ITEM FLEECE_TEST_SRC ${TOP}vendor/fleece/Tests/FleeceTestsMain.cc)
 if(NOT APPLE)
     LIST(REMOVE_ITEM FLEECE_TEST_SRC ${TOP}vendor/fleece/Tests/ObjCTests.mm)
 endif()
-set(TEST_SRC ${TEST_SRC} ${FLEECE_TEST_SRC} ${TOP}/tools/ArgumentTokenizer.cc)
 
 file(COPY data DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/LiteCore/tests)
 file(COPY ../../C/tests/data DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/C/tests)
